@@ -1,0 +1,3 @@
+inpath = '/home/mannk/Downloads/'
+latestdays = '2'
+outpath = '/mnt/containerdata/nginxgen/var_log_nginx/nginxCommonLogs.log'
