@@ -1,3 +1,3 @@
-inpath = '/home/mannk/Downloads/'
-latestdays = '2'
-outpath = '/mnt/containerdata/nginxgen/var_log_nginx/nginxCommonLogs.log'
+inpath = '/mnt/containerdata/nginxgen/var_log_nginx/var_log_nginx'
+latestdays = '10'
+outpath = '/tmp/nginx2commonlog/telegraf-nginx-access.log'

@@ -9,9 +9,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/tidwall/gjson"
-	"io/ioutil"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 )
 
@@ -23,9 +23,11 @@ var (
 	outputPath string
 	latestdays string
 
-	logger  = log.New()
-	logfile = "/var/log/nginx2commonlog/nginx2commonlog.log"
-	logf    *os.File
+	logger     = log.New()
+	applog     = "/tmp/nginx2commonlog/app.log"
+	tmpjsonlog = "/tmp/nginx2commonlog/latest-nginx-json.log"
+	//finallog   = "/tmp/nginx2commonlog/telegraf-nginx-access.log"
+	logf *os.File
 
 	rootCmd = &cobra.Command{
 		Use:   "nginx2commonlog",
@@ -51,20 +53,20 @@ func init() {
 	viper.BindPFlag("outpath", rootCmd.Flags().Lookup("outpath"))
 	viper.BindPFlag("latestdays", rootCmd.Flags().Lookup("latestdays"))
 
-	if !utils.PathIsExist("/var/log/nginx/access.log") {
-		utils.DirCreate("/var/log/nginx", 0775)
-		err := utils.FileCreate("/var/log/nginx/access.log")
+	/*	if !utils.PathIsExist(finallog) {
+		utils.DirCreate(filepath.Dir(finallog), 0775)
+		err := utils.FileCreate(finallog)
 		if err != nil {
 			logger.Error(err)
 		}
-	}
+	}*/
 }
 
 func initLogger() {
-	utils.DirCreate("/var/log/nginx2commonlog", 0775)
-	utils.FileCreate(logfile)
+	utils.DirCreate(filepath.Dir(applog), 0775)
+	utils.FileCreate(applog)
 	var err error
-	logf, err = os.OpenFile(logfile, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
+	logf, err = os.OpenFile(applog, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
 	if err != nil {
 		logger.Error(err)
 	}
@@ -106,14 +108,13 @@ func RunRootCmd(cmd *cobra.Command, args []string) {
 	runtime.Goexit()
 }
 
-func GenCommonLastLogs(ip, op, ld string) error {
+func GenLastLogs(ip, op, ld string) error {
 	logger.Info("Find the log files newer than " + ld + " days")
-	findcmd := "find " + ip + " -mtime -" + ld + " -type f -name \"*access*\" -exec cat {} >" + op + " \\;"
+	findcmd := "find " + ip + " -mtime -" + ld + " -type f -name \"*smartocr.vn-access*\" -exec zgrep -E -h \"\\\"status\\\": \\\"200\\\"|\\\"status\\\": \\\"408\\\"|\\\"status\\\": \\\"400\\\"|\\\"status\\\": \\\"499\\\"|\\\"status\\\": \\\"502\\\"\" {} >" + op + " \\;"
 	genjsonlogcmd := exec.Command("bash", "-c", findcmd)
 	//#logger.Debug(findcmd)
-	if logger.Level <= log.DebugLevel {
-		fmt.Println(findcmd)
-	}
+	logger.Debug(findcmd)
+	fmt.Println(findcmd)
 
 	output, err := genjsonlogcmd.Output()
 	if err != nil {
@@ -125,17 +126,24 @@ func GenCommonLastLogs(ip, op, ld string) error {
 }
 
 func GenLogs(job *sched.Job) {
-	err := GenCommonLastLogs(inputPath, "/tmp/temp-nginxgencommonlog.json", latestdays)
+	err := GenLastLogs(inputPath, tmpjsonlog, latestdays)
 	if err != nil {
 		logger.Error(err)
 		return
 	} // have json log at output path.
-	file, err := os.Open("/tmp/temp-nginxgencommonlog.json")
+	file, err := os.Open(tmpjsonlog)
 	if err != nil {
 		logger.Error(err)
 		return
 	}
 	defer file.Close()
+
+	outputfile, err := os.OpenFile(outputPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0664)
+	if err != nil {
+		logger.Error(err)
+		return
+	}
+	defer outputfile.Close()
 
 	scanner := bufio.NewScanner(file)
 	var resultFileContentChunk string
@@ -146,7 +154,7 @@ func GenLogs(job *sched.Job) {
 		count++
 		resultFileContentChunk += json2common(line) + "\n"
 		if count >= 500 {
-			err := ioutil.WriteFile(outputPath, []byte(resultFileContentChunk), 0644)
+			_, err := outputfile.Write([]byte(resultFileContentChunk))
 			if err != nil {
 				logger.Error("Error writing to result file:", err)
 				return
@@ -156,7 +164,7 @@ func GenLogs(job *sched.Job) {
 		}
 	}
 	if len(resultFileContentChunk) > 0 {
-		err := ioutil.WriteFile(outputPath, []byte(resultFileContentChunk), 0644)
+		_, err := outputfile.Write([]byte(resultFileContentChunk))
 		if err != nil {
 			logger.Error("Error writing to result file:", err)
 			return

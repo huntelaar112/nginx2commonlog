@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-nginx2commonlog -i "/mnt/containerdata/nginxgen/var_log_nginx" -o "/var/log/nginx/access.log" -d "${DAYS}" &
+nginx2commonlog -i "/mnt/containerdata/nginxgen/var_log_nginx" -o "${PATHLOG}" -d "${DAYS}" &
 
 if [ "${1:0:1}" = '-' ]; then
     set -- telegraf "$@"
